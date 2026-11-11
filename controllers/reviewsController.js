@@ -33,18 +33,26 @@ function writeReviews(reviews) {
 // GET all reviews (admin)
 async function getAllReviews(req, res) {
   try {
-    const { productId, status } = req.query;
+    const { productId, slug, status } = req.query;
     const useMongo = await isMongoAvailable();
 
     let reviews;
     if (useMongo) {
       let filter = {};
+      // Support both productId and slug
       if (productId) filter.productId = productId;
+      if (slug) filter.productSlug = slug;
       if (status) filter.status = status;
+      // If no status filter, show only approved reviews (for public)
+      if (!status && (productId || slug)) filter.status = 'approved';
+      
       reviews = await Review.find(filter).select('-_id -__v').sort({ createdAt: -1 }).lean();
     } else {
       reviews = readReviews();
       if (productId) reviews = reviews.filter(r => r.productId === productId);
+      if (slug) reviews = reviews.filter(r => r.productSlug === slug);
+      // If no status filter, show only approved reviews (for public)
+      if (!status && (productId || slug)) reviews = reviews.filter(r => r.status === 'approved');
       if (status) reviews = reviews.filter(r => r.status === status);
       reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
@@ -79,10 +87,12 @@ async function getProductReviews(req, res) {
 // POST - Submit a review
 async function submitReview(req, res) {
   try {
-    const { productId, productName, userName, rating, comment, variant } = req.body;
+    // Support both customerName and userName field names
+    const { productId, productSlug, productName, customerName, userName, rating, comment, variant } = req.body;
+    const name = customerName || userName;
 
-    if (!productId || !userName || !rating || !comment) {
-      return res.status(400).json({ success: false, error: 'productId, userName, rating, and comment are required' });
+    if (!productId || !name || !rating || !comment) {
+      return res.status(400).json({ success: false, error: 'productId, customerName, rating, and comment are required' });
     }
     if (rating < 1 || rating > 5) {
       return res.status(400).json({ success: false, error: 'Rating must be between 1 and 5' });
@@ -91,14 +101,15 @@ async function submitReview(req, res) {
     const newReview = {
       id: `rev-${Date.now()}`,
       productId,
+      productSlug: productSlug || '',
       productName: productName || '',
-      userName: userName.trim(),
+      customerName: name.trim(),
       rating: Number(rating),
       comment: comment.trim(),
       variant: variant || '',
       verified: false,
       helpful: 0,
-      status: 'pending',
+      status: 'approved', // Auto-approve for now (can change to 'pending' later)
       createdAt: new Date().toISOString(),
     };
 
@@ -113,7 +124,7 @@ async function submitReview(req, res) {
       console.log(`✅ Review saved to JSON for product: ${productId}`);
     }
 
-    res.json({ success: true, message: 'Review submitted! It will appear after approval.', review: newReview });
+    res.json({ success: true, message: 'Review submitted successfully!', review: newReview });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -123,14 +134,15 @@ async function submitReview(req, res) {
 async function updateReview(req, res) {
   try {
     const { id } = req.params;
-    const { status, userName, rating, comment, verified } = req.body;
+    const { status, customerName, userName, rating, comment, verified } = req.body;
+    const name = customerName || userName;
 
     const useMongo = await isMongoAvailable();
 
     if (useMongo) {
       const updates = {};
       if (status !== undefined) updates.status = status;
-      if (userName) updates.userName = userName.trim();
+      if (name) updates.customerName = name.trim();
       if (rating) updates.rating = Number(rating);
       if (comment) updates.comment = comment.trim();
       if (verified !== undefined) updates.verified = verified;
@@ -144,7 +156,7 @@ async function updateReview(req, res) {
       if (index === -1) return res.status(404).json({ success: false, error: 'Review not found' });
 
       if (status !== undefined) reviews[index].status = status;
-      if (userName) reviews[index].userName = userName.trim();
+      if (name) reviews[index].customerName = name.trim();
       if (rating) reviews[index].rating = Number(rating);
       if (comment) reviews[index].comment = comment.trim();
       if (verified !== undefined) reviews[index].verified = verified;
