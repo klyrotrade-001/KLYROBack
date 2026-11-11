@@ -150,6 +150,8 @@ app.get('/api/reviews/product/:productId', reviewsController.getProductReviews);
 app.post('/api/reviews', reviewsController.submitReview);
 app.patch('/api/reviews/:id', reviewsController.updateReview);
 app.delete('/api/reviews/:id', reviewsController.deleteReview);
+app.patch('/api/reviews/:id', reviewsController.updateReview);
+app.delete('/api/reviews/:id', reviewsController.deleteReview);
 
 // ── 404 Fallback ──────────────────────────────────────────────
 app.use((req, res) => {
