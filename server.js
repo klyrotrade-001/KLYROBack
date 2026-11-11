@@ -144,6 +144,21 @@ app.post('/api/inquiries', async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// ── Admin Utilities ───────────────────────────────────────────
+app.post('/api/admin/seed-reviews', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    exec('node scripts/seed-sample-reviews.js', (error, stdout, stderr) => {
+      if (error) {
+        return res.status(500).json({ success: false, error: error.message, stderr });
+      }
+      res.json({ success: true, message: 'Reviews seeded successfully', output: stdout });
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ── Reviews ──────────────────────────────────────────────────
 app.get('/api/reviews', reviewsController.getAllReviews);
 app.get('/api/reviews/product/:productId', reviewsController.getProductReviews);
