@@ -134,12 +134,13 @@ exports.getProductBySlug = async (slug) => {
   const isMongo = await checkMongo();
 
   if (isMongo) {
-    const product = await Product.findOne({ slug }).select('-_id -__v').lean();
+    // Search by both id and slug
+    const product = await Product.findOne({ $or: [{ id: slug }, { slug }] }).select('-_id -__v').lean();
     if (!product) return { success: false, status: 404, error: `Product '${slug}' not found` };
     return { success: true, product };
   } else {
     const products = readProductsFromFile();
-    const product = products.find(p => p.slug === slug);
+    const product = products.find(p => p.slug === slug || p.id === slug);
     if (!product) return { success: false, status: 404, error: `Product '${slug}' not found` };
     return { success: true, product };
   }
