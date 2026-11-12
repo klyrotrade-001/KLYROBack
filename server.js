@@ -1,6 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const siteConfig = require('./config/siteConfig');
 
@@ -14,10 +17,39 @@ const inquiriesController  = require('./controllers/inquiriesController');
 const app = express();
 const PORT = process.env.PORT || siteConfig.port || 5001;
 
-// ── Middleware ────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// ── Security & Performance Middleware ─────────────────────────
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(compression());
+
+// CORS — allow frontend origins only
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://www.klyroo.online',
+  'https://klyroo.online',
+  'https://klyro-admin.vercel.app',
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Render health checks)
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Rate limiting for public write endpoints
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later.' },
+});
+
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 // ── Health ────────────────────────────────────────────────────
 app.get(['/', '/api/health'], (req, res) => {
@@ -79,7 +111,7 @@ app.get('/api/orders', async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', writeLimiter, async (req, res) => {
   try {
     const data = await ordersController.createOrder(req.body);
     res.status(data.status || 200).json(data);
@@ -117,7 +149,7 @@ app.get('/api/track', async (req, res) => {
 });
 
 // ── Newsletter / Subscribers ──────────────────────────────────
-app.post('/api/newsletter', async (req, res) => {
+app.post('/api/newsletter', writeLimiter, async (req, res) => {
   try {
     const data = await newsletterController.subscribe(req.body.email);
     res.status(data.status || 200).json(data);
@@ -137,7 +169,7 @@ app.get('/api/inquiries', async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.post('/api/inquiries', async (req, res) => {
+app.post('/api/inquiries', writeLimiter, async (req, res) => {
   try {
     const data = await inquiriesController.createInquiry(req.body);
     res.status(data.status || 200).json(data);
@@ -145,26 +177,23 @@ app.post('/api/inquiries', async (req, res) => {
 });
 
 // ── Admin Utilities ───────────────────────────────────────────
-app.post('/api/admin/seed-reviews', async (req, res) => {
-  try {
-    const { exec } = require('child_process');
-    exec('node scripts/seed-sample-reviews.js', (error, stdout, stderr) => {
-      if (error) {
-        return res.status(500).json({ success: false, error: error.message, stderr });
-      }
-      res.json({ success: true, message: 'Reviews seeded successfully', output: stdout });
-    });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+// Protected by ADMIN_SECRET env var — not publicly accessible
+app.post('/api/admin/seed-reviews', (req, res) => {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret || req.headers['x-admin-secret'] !== secret) {
+    return res.status(403).json({ success: false, error: 'Forbidden' });
   }
+  const { exec } = require('child_process');
+  exec('node scripts/seed-sample-reviews.js', (error, stdout, stderr) => {
+    if (error) return res.status(500).json({ success: false, error: error.message, stderr });
+    res.json({ success: true, message: 'Reviews seeded successfully', output: stdout });
+  });
 });
 
 // ── Reviews ──────────────────────────────────────────────────
 app.get('/api/reviews', reviewsController.getAllReviews);
 app.get('/api/reviews/product/:productId', reviewsController.getProductReviews);
-app.post('/api/reviews', reviewsController.submitReview);
-app.patch('/api/reviews/:id', reviewsController.updateReview);
-app.delete('/api/reviews/:id', reviewsController.deleteReview);
+app.post('/api/reviews', writeLimiter, reviewsController.submitReview);
 app.patch('/api/reviews/:id', reviewsController.updateReview);
 app.delete('/api/reviews/:id', reviewsController.deleteReview);
 

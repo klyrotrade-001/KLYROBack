@@ -11,13 +11,13 @@ let Product = null;
 try { Category = require('../models/Category'); } catch {}
 try { Product = require('../models/Product'); } catch {}
 
-async function isMongoAvailable() {
-  if (!Category) return false;
-  try {
-    await Category.countDocuments();
-    return true;
-  } catch { return false; }
-}
+// Event-based mongo check — no DB round-trip per request
+let mongoAvailable = false;
+mongoose.connection.on('connected', () => { mongoAvailable = true; });
+mongoose.connection.on('disconnected', () => { mongoAvailable = false; });
+if (mongoose.connection.readyState === 1) mongoAvailable = true;
+
+function isMongoAvailable() { return !!(Category && mongoAvailable); }
 
 function readCategories() {
   const data = fs.readFileSync(categoriesPath, 'utf8');
@@ -36,13 +36,23 @@ function generateSlug(name) {
 }
 
 async function updateCategoryCounts() {
-  const useMongo = await isMongoAvailable();
+  const useMongo = isMongoAvailable();
   if (useMongo) {
+    // Single aggregate instead of N+1 countDocuments queries
+    const counts = await Product.aggregate([
+      { $group: { _id: '$categorySlug', count: { $sum: 1 } } },
+    ]);
+    const countMap = Object.fromEntries(counts.map(c => [c._id, c.count]));
     const categories = await Category.find().lean();
-    for (const cat of categories) {
-      const count = await Product.countDocuments({ categorySlug: cat.slug });
-      await Category.updateOne({ id: cat.id }, { itemCount: count });
-    }
+    // Bulk-update only categories whose count changed
+    const bulkOps = categories
+      .map(cat => ({
+        updateOne: {
+          filter: { id: cat.id },
+          update: { $set: { itemCount: countMap[cat.slug] || 0 } },
+        },
+      }));
+    if (bulkOps.length) await Category.bulkWrite(bulkOps);
     return await Category.find().lean();
   } else {
     const categories = readCategories();
@@ -69,7 +79,7 @@ async function getAllCategories(req, res) {
 async function getCategoryBySlug(req, res) {
   try {
     const { slug } = req.params;
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
     let category;
     if (useMongo) {
       category = await Category.findOne({ slug }).lean();
@@ -92,7 +102,7 @@ async function addCategory(req, res) {
     const slug = generateSlug(name);
     const id = slug;
 
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
     if (useMongo) {
       const existing = await Category.findOne({ slug });
       if (existing) return res.status(400).json({ success: false, error: 'Category with this name already exists' });
@@ -123,7 +133,7 @@ async function updateCategory(req, res) {
   try {
     const { id } = req.params;
     const { name, description, image } = req.body;
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
 
     if (useMongo) {
       const updates = {};
@@ -174,7 +184,7 @@ async function updateCategory(req, res) {
 async function deleteCategory(req, res) {
   try {
     const { id } = req.params;
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
 
     if (useMongo) {
       const category = await Category.findOne({ id });

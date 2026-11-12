@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
 
 const REVIEWS_FILE = path.join(__dirname, '../data/reviews.json');
 
@@ -9,16 +10,13 @@ try {
   Review = require('../models/Review');
 } catch (e) {}
 
-// Check if MongoDB is available
-async function isMongoAvailable() {
-  if (!Review) return false;
-  try {
-    await Review.countDocuments();
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Event-based mongo check — no DB round-trip per request
+let mongoAvailable = false;
+mongoose.connection.on('connected', () => { mongoAvailable = true; });
+mongoose.connection.on('disconnected', () => { mongoAvailable = false; });
+if (mongoose.connection.readyState === 1) mongoAvailable = true;
+
+function isMongoAvailable() { return !!(Review && mongoAvailable); }
 
 // JSON helpers
 function readReviews() {
@@ -34,7 +32,7 @@ function writeReviews(reviews) {
 async function getAllReviews(req, res) {
   try {
     const { productId, slug, status } = req.query;
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
 
     let reviews;
     if (useMongo) {
@@ -67,7 +65,7 @@ async function getAllReviews(req, res) {
 async function getProductReviews(req, res) {
   try {
     const { productId } = req.params;
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
 
     let reviews;
     if (useMongo) {
@@ -113,15 +111,13 @@ async function submitReview(req, res) {
       createdAt: new Date().toISOString(),
     };
 
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
     if (useMongo) {
       await Review.create(newReview);
-      console.log(`✅ Review saved to MongoDB for product: ${productId}`);
     } else {
       const reviews = readReviews();
       reviews.push(newReview);
       writeReviews(reviews);
-      console.log(`✅ Review saved to JSON for product: ${productId}`);
     }
 
     res.json({ success: true, message: 'Review submitted successfully!', review: newReview });
@@ -137,7 +133,7 @@ async function updateReview(req, res) {
     const { status, customerName, userName, rating, comment, verified } = req.body;
     const name = customerName || userName;
 
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
 
     if (useMongo) {
       const updates = {};
@@ -173,7 +169,7 @@ async function updateReview(req, res) {
 async function deleteReview(req, res) {
   try {
     const { id } = req.params;
-    const useMongo = await isMongoAvailable();
+    const useMongo = isMongoAvailable();
 
     if (useMongo) {
       const review = await Review.findOneAndDelete({ id });

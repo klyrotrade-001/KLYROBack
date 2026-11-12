@@ -1,22 +1,18 @@
 const Product = require('../models/Product');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
 const PRODUCTS_FILE = path.join(__dirname, '..', 'data', 'products.json');
 
-// Helper to check if MongoDB is available
+// Module-level flag updated by mongoose connection events — no DB round-trip per request
 let mongoAvailable = false;
+mongoose.connection.on('connected', () => { mongoAvailable = true; });
+mongoose.connection.on('disconnected', () => { mongoAvailable = false; });
+// Set initial state if already connected when module loads (e.g. hot reload)
+if (mongoose.connection.readyState === 1) mongoAvailable = true;
 
-async function checkMongo() {
-  try {
-    const count = await Product.countDocuments();
-    mongoAvailable = true;
-    return true;
-  } catch {
-    mongoAvailable = false;
-    return false;
-  }
-}
+function checkMongo() { return mongoAvailable; }
 
 // Read products from JSON file
 function readProductsFromFile() {
@@ -36,7 +32,7 @@ function writeProductsToFile(products) {
 
 // Seed products from JSON on first run if DB is empty
 async function seedProductsIfEmpty() {
-  const isMongo = await checkMongo();
+  const isMongo = checkMongo();
   if (!isMongo) return;
 
   const count = await Product.countDocuments();
@@ -54,7 +50,7 @@ async function seedProductsIfEmpty() {
 seedProductsIfEmpty().catch(console.error);
 
 exports.getProducts = async (query = {}) => {
-  const isMongo = await checkMongo();
+  const isMongo = checkMongo();
 
   if (isMongo) {
     // MongoDB version
@@ -141,7 +137,7 @@ exports.getProducts = async (query = {}) => {
 };
 
 exports.getProductBySlug = async (slug) => {
-  const isMongo = await checkMongo();
+  const isMongo = checkMongo();
 
   if (isMongo) {
     // Search by both id and slug
@@ -197,7 +193,7 @@ exports.addProduct = async (body) => {
     isFeatured: !!isFeatured,
   };
 
-  const isMongo = await checkMongo();
+  const isMongo = checkMongo();
 
   if (isMongo) {
     const newProduct = await Product.create(newProductData);
@@ -217,7 +213,7 @@ exports.addProduct = async (body) => {
 };
 
 exports.deleteProduct = async (id) => {
-  const isMongo = await checkMongo();
+  const isMongo = checkMongo();
 
   if (isMongo) {
     const product = await Product.findOneAndDelete({ $or: [{ id }, { slug: id }] });
@@ -245,7 +241,7 @@ exports.deleteProduct = async (id) => {
 };
 
 exports.updateProduct = async (id, body) => {
-  const isMongo = await checkMongo();
+  const isMongo = checkMongo();
 
   if (isMongo) {
     const product = await Product.findOneAndUpdate(

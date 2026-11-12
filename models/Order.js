@@ -31,11 +31,12 @@ const customerSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
-  createdAt: { type: String, default: () => new Date().toISOString() },
+  createdAt: { type: String, default: () => new Date().toISOString(), index: true },
   status: {
     type: String,
     enum: ['placed', 'confirmed', 'processing', 'shipped', 'delivered'],
     default: 'placed',
+    index: true,
   },
   customer: customerSchema,
   items: [orderItemSchema],

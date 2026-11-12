@@ -10,7 +10,7 @@ const productSchema = new mongoose.Schema({
   slug: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   category: String,
-  categorySlug: String,
+  categorySlug: { type: String, index: true },
   price: Number,
   originalPrice: Number,
   discount: Number,
@@ -20,12 +20,12 @@ const productSchema = new mongoose.Schema({
   specs: { type: Map, of: String },
   images: [String],
   variants: [variantSchema],
-  inStock: { type: Boolean, default: true },
+  inStock: { type: Boolean, default: true, index: true },
   rating: { type: Number, default: 4.0 },
   reviewsCount: { type: Number, default: 0 },
   isNewArrival: { type: Boolean, default: false },
-  isBestSeller: { type: Boolean, default: false },
-  isFeatured: { type: Boolean, default: false },
+  isBestSeller: { type: Boolean, default: false, index: true },
+  isFeatured: { type: Boolean, default: false, index: true },
 }, { timestamps: false });
 
 module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);
