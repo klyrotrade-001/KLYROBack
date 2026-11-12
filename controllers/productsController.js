@@ -60,6 +60,11 @@ exports.getProducts = async (query = {}) => {
     // MongoDB version
     let filter = {};
 
+    // Hide out-of-stock products on frontend (admin can pass showAll=true to bypass)
+    if (!query.showAll) {
+      filter.inStock = true;
+    }
+
     if (query.category && query.category !== 'all') {
       filter.categorySlug = query.category.toLowerCase();
     }
@@ -95,6 +100,11 @@ exports.getProducts = async (query = {}) => {
   } else {
     // JSON file version
     let products = readProductsFromFile();
+
+    // Hide out-of-stock products on frontend
+    if (!query.showAll) {
+      products = products.filter(p => p.inStock !== false);
+    }
 
     // Filter by category
     if (query.category && query.category !== 'all') {
