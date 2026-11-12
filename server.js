@@ -28,6 +28,7 @@ const allowedOrigins = [
   'https://www.klyroo.online',
   'https://klyroo.online',
   'https://klyro-admin.vercel.app',
+  'https://admin.klyroo.online',
 ];
 app.use(cors({
   origin: (origin, callback) => {
