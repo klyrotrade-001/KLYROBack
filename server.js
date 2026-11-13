@@ -49,8 +49,8 @@ const writeLimiter = rateLimit({
   message: { success: false, error: 'Too many requests, please try again later.' },
 });
 
-app.use(express.json({ limit: '100kb' }));
-app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ── Health ────────────────────────────────────────────────────
 app.get(['/', '/api/health'], (req, res) => {
